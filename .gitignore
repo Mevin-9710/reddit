@@ -1,0 +1,27 @@
+# Environment
+.env
+.env.local
+
+# Browser session (contains user cookies - DO NOT COMMIT)
+browser_profile/
+session.json
+
+# Screenshots (debug only)
+screenshots/
+
+# Logs
+bot.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
