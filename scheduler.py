@@ -7,7 +7,7 @@ import subprocess
 import sys
 from datetime import datetime
 
-RUN_TIME = "09:00"  # Daily at 9:00 AM
+RUN_TIME = "06:00"  # Daily at 6:00 AM UTC
 
 def run_bot():
     """Run the Reddit bot."""
