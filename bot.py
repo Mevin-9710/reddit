@@ -42,7 +42,6 @@ MAX_DELAY = 3600  # 60 minutes
 
 LOG_FILE = BASE_DIR / "bot.log"
 SCREENSHOTS_DIR = BASE_DIR / "screenshots"
-POSTED_POSTS_FILE = BASE_DIR / "posted_posts.json"
 
 # Create timestamped run folder for screenshots
 RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -114,38 +113,12 @@ class RedditBot:
         self.failed = 0
         self.total_posts = len(SUBREDDITS) * POSTS_PER_SUBREDDIT
         self.current_action = "Idle"
-        self.posted_posts = self._load_posted_posts()
 
         self.http = requests.Session()
         self.http.headers.update({
             "User-Agent": get_random_user_agent(),
             "Referer": "https://www.reddit.com"
         })
-
-    def _load_posted_posts(self) -> set:
-        """Load already-posted post IDs from file."""
-        if POSTED_POSTS_FILE.exists():
-            try:
-                with open(POSTED_POSTS_FILE, "r") as f:
-                    return set(json.load(f))
-            except Exception as e:
-                logger.warning(f"Could not load posted posts: {e}")
-        return set()
-
-    def _save_posted_posts(self) -> None:
-        """Save posted post IDs to file."""
-        try:
-            with open(POSTED_POSTS_FILE, "w") as f:
-                json.dump(list(self.posted_posts), f)
-        except Exception as e:
-            logger.error(f"Could not save posted posts: {e}")
-
-    def _is_posted(self, post_id: str) -> bool:
-        return post_id in self.posted_posts
-
-    def _mark_posted(self, post_id: str) -> None:
-        self.posted_posts.add(post_id)
-        self._save_posted_posts()
 
     def _random_delay(self, min_sec: int = MIN_DELAY, max_sec: int = MAX_DELAY):
         delay = random.uniform(min_sec, max_sec)
@@ -179,17 +152,14 @@ class RedditBot:
             results = []
             for post in posts[:POSTS_PER_SUBREDDIT * 2]:
                 p = post.get("data", {})
-                post_id = p.get("id")
-                if p.get("title") and p.get("permalink") and not self._is_posted(post_id):
+                if p.get("title") and p.get("permalink"):
                     results.append({
                         "title": p.get("title"),
                         "permalink": f"https://www.reddit.com{p.get('permalink')}",
-                        "id": post_id
+                        "id": p.get("id")
                     })
                     if len(results) >= POSTS_PER_SUBREDDIT:
                         break
-            if len(results) < POSTS_PER_SUBREDDIT:
-                logger.info(f"Found {len(results)} new posts (skipping {POSTS_PER_SUBREDDIT - len(results)} already posted)")
             return results
 
         except Exception as e:
@@ -253,94 +223,54 @@ Write ONLY the comment text, nothing else:"""
             if screenshot_prefix:
                 await page.screenshot(path=str(SCREENSHOTS_DIR / f"run_{RUN_ID}.png"))
 
-            # Scroll to bottom
+            # Scroll to bottom where the comment composer is
             logger.info("Scrolling to comments...")
             await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
 
             await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_scrolled.png"))
 
-            # Try to find and click the comment textarea using multiple approaches
-            logger.info("Finding comment input...")
-            input_found = False
-
-            # Approach 1: Look for the main comment composer textarea
-            textareas = await page.locator('textarea').all()
-            for ta in textareas:
-                try:
-                    is_visible = await ta.is_visible()
-                    if is_visible:
-                        await ta.fill(comment)
-                        input_found = True
-                        logger.info("Found textarea and filled comment")
-                        break
-                except:
-                    continue
-
-            # Approach 2: If not found, try via shadow DOM
-            if not input_found:
-                logger.info("Trying shadow DOM approach...")
-                filled = await page.evaluate('''(commentText) => {
-                    // Try various selectors for the comment input
-                    const selectors = [
-                        'shreddit-comment-composer textarea',
-                        'faceplate-textarea textarea',
-                        '#comment-editor-shared textarea',
-                        'shreddit-async-loader comment-composer-host faceplate-textarea-input'
-                    ];
-                    for (const sel of selectors) {
-                        const el = document.querySelector(sel);
-                        if (el) {
-                            const textarea = el.shadowRoot ? el.shadowRoot.querySelector('textarea') : el;
-                            if (textarea) {
-                                textarea.value = commentText;
-                                textarea.dispatchEvent(new Event('input', { bubbles: true }));
-                                return true;
-                            }
-                        }
-                    }
-                    return false;
-                }''', comment)
-                if filled:
-                    input_found = True
-                    logger.info("Filled via shadow DOM")
-
-            if not input_found:
-                logger.error("Could not find comment input")
-                await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_no_input.png"))
-                return False
-
+            # Click the comment composer to activate it
+            logger.info("Activating comment form...")
+            await page.evaluate('''() => {
+                const wrapper = document.querySelector('#fixed-comment-composer-wrapper');
+                if (wrapper) wrapper.style.display = 'block';
+            }''')
             await asyncio.sleep(1)
-            await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_typed.png"))
 
-            # Find and click the submit button
-            logger.info("Clicking submit button...")
-            submitted = await page.evaluate('''() => {
-                // Try multiple approaches to find the submit button
-                const buttonSelectors = [
-                    'button:has-text("Comment")',
-                    'button:has-text("comment")',
-                    '[role="button"]:has-text("Comment")',
-                    'shreddit-comment-composer button',
-                    'shreddit-async-loader button'
-                ];
+            # Get the shadow root and click the input
+            await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_activated.png"))
 
-                for (const sel of buttonSelectors) {
-                    const buttons = document.querySelectorAll(sel);
-                    for (const btn of buttons) {
-                        const text = btn.textContent?.trim().toLowerCase() || '';
-                        if (text === 'comment') {
-                            btn.click();
-                            return true;
-                        }
+            # Find the shadow root input
+            clicked = await page.evaluate('''() => {
+                const textarea = document.querySelector("#fixed-comment-composer-wrapper > shreddit-async-loader > comment-composer-host > faceplate-tracker:nth-child(1) > faceplate-textarea-input");
+                if (textarea && textarea.shadowRoot) {
+                    const input = textarea.shadowRoot.querySelector("label > div");
+                    if (input) {
+                        input.click();
+                        return true;
                     }
                 }
+                return false;
+            }''')
+            logger.info(f"Clicked input via shadow root: {clicked}")
+            await asyncio.sleep(1)
 
-                // Fallback: find any button that looks like submit
-                const allButtons = document.querySelectorAll('button');
-                for (const btn of allButtons) {
-                    const text = btn.textContent?.trim().toLowerCase() || '';
-                    if (text === 'comment' || text.includes('post comment')) {
+            # Type the comment using keyboard.type
+            logger.info(f"Typing comment: {comment[:50]}...")
+            await page.keyboard.type(comment, delay=80)
+            await asyncio.sleep(1)
+
+            await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_typed.png"))
+
+            # Click the Comment button (NOT Reply)
+            logger.info("Clicking Comment button...")
+            clicked = await page.evaluate('''() => {
+                const buttons = Array.from(document.querySelectorAll('button'));
+                // Find button with exact text "Comment" (not Reply)
+                for (let btn of buttons) {
+                    const text = btn.textContent.trim();
+                    if (text === 'Comment') {
                         btn.click();
                         return true;
                     }
@@ -348,15 +278,15 @@ Write ONLY the comment text, nothing else:"""
                 return false;
             }''')
 
-            logger.info(f"Submit button clicked: {submitted}")
+            logger.info(f"Comment button clicked: {clicked}")
 
-            if submitted:
+            if clicked:
                 await asyncio.sleep(5)
                 await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_after.png"))
                 logger.info("Comment posted!")
                 return True
 
-            logger.error("Could not post comment - no submit button found")
+            logger.error("Could not post comment")
             await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_error.png"))
             return False
 
@@ -449,7 +379,6 @@ Write ONLY the comment text, nothing else:"""
 
                     if success:
                         self.comments_posted += 1
-                        self._mark_posted(post["id"])
                         logger.success(f"Comment posted! ({self.comments_posted}/{self.total_posts})")
                     else:
                         self.failed += 1
