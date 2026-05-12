@@ -353,27 +353,37 @@ Write ONLY the comment text, nothing else:"""
         status = f"Progress: {progress} | Posted: {self.comments_posted} | Failed: {self.failed}"
         print(f"\r{status} | {self.current_action}    ", end="", flush=True)
 
+    async def _open_browser(self, p):
+        """Open browser and ensure logged in."""
+        context = await p.chromium.launch_persistent_context(
+            str(BROWSER_PROFILE),
+            headless=False,
+            args=['--start-maximized', '--no-sandbox'],
+            viewport={"width": 1400, "height": 900}
+        )
+        page = context.pages[0] if context.pages else context.new_page()
+
+        logger.info("Opening Reddit...")
+        await page.goto("https://www.reddit.com", timeout=60000)
+        await asyncio.sleep(3)
+
+        # Save cookies for HTTP requests
+        cookies = await context.cookies()
+        for c in cookies:
+            self.http.cookies.set(c["name"], c["value"], domain=".reddit.com")
+
+        return context, page
+
     async def run(self):
         print("\n" + "=" * 60)
-        logger.info("Reddit Bot - ONE BROWSER SESSION")
+        logger.info("Reddit Bot - CLOSE BROWSER AFTER EACH POST")
         print("=" * 60)
-        logger.info("Browser will open. LOG IN to Reddit.")
-        logger.info("Browser stays OPEN the whole time.")
+        print("Browser opens for each post, closes after posting.")
         print("=" * 60 + "\n")
 
         async with async_playwright() as p:
-            context = await p.chromium.launch_persistent_context(
-                str(BROWSER_PROFILE),
-                headless=False,
-                args=['--start-maximized', '--no-sandbox'],
-                viewport={"width": 1400, "height": 900}
-            )
-            page = context.pages[0] if context.pages else context.new_page()
-
-            logger.info("Browser opened with saved profile.")
-            logger.info("Opening Reddit...")
-            await page.goto("https://www.reddit.com", timeout=60000)
-            await asyncio.sleep(3)
+            # First time: ensure logged in
+            context, page = await self._open_browser(p)
 
             try:
                 login_check = await page.locator('a[href*="/login"], [data-testid="login-button"]').count()
@@ -388,19 +398,16 @@ Write ONLY the comment text, nothing else:"""
 
             print("\n" + "!" * 60)
             print("Starting automation in 5 seconds...")
-            print("Browser will stay OPEN the whole time.")
             print("!" * 60 + "\n")
 
             await asyncio.sleep(5)
 
+            # Save session after first login
             cookies = await context.cookies()
             session_mgr = SessionManager()
             session_mgr.save_cookies(cookies)
-
-            for c in cookies:
-                self.http.cookies.set(c["name"], c["value"], domain=".reddit.com")
-
-            logger.info("Reddit login saved!")
+            await context.close()
+            logger.info("Reddit login saved! Browser closed.")
             print("\nStarting automation...\n")
 
             for i, subreddit in enumerate(SUBREDDITS, 1):
@@ -418,18 +425,28 @@ Write ONLY the comment text, nothing else:"""
                     self.current_action = f"Post {post_num}/{self.total_posts}: {title_short}"
                     logger.info(f"Post {j}/{len(posts)}: {title_short}")
 
+                    # Open browser fresh for each post
+                    context, page = await self._open_browser(p)
+
                     try:
                         self.current_action = "Generating comment via Gemini"
                         comment = await self._generate_comment_gemini(page, post["title"], subreddit)
                         logger.info(f"Generated: {comment[:50]}...")
                     except Exception as e:
                         logger.error(f"Failed to generate: {e}")
+                        await context.close()
                         self.failed += 1
                         self.print_status()
                         print()
+                        if j < len(posts):
+                            self._random_delay()
                         continue
 
                     success = await self._post_comment(page, post["permalink"], comment, f"r{subreddit}_p{post_num}")
+
+                    # Close browser after posting
+                    await context.close()
+                    logger.info("Browser closed.")
 
                     if success:
                         self.comments_posted += 1
@@ -453,9 +470,6 @@ Write ONLY the comment text, nothing else:"""
             logger.info("Automation complete!")
             print(f"Posted: {self.comments_posted} | Failed: {self.failed}")
             print("=" * 60)
-
-            await context.close()
-            logger.info("Browser closed.")
             print("Bot finished. Exiting.")
 
 
