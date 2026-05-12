@@ -380,7 +380,7 @@ Write ONLY the comment text, nothing else:"""
         async with async_playwright() as p:
             context = await p.chromium.launch_persistent_context(
                 str(BROWSER_PROFILE),
-                headless=True,
+                headless=False,
                 args=['--start-maximized', '--no-sandbox'],
                 viewport={"width": 1400, "height": 900}
             )
