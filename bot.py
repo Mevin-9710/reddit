@@ -397,11 +397,11 @@ Write ONLY the comment text, nothing else:"""
             print("\n" + "=" * 60)
             logger.info("Automation complete!")
             print(f"Posted: {self.comments_posted} | Failed: {self.failed}")
-            print("Browser stays open. Close window when done.")
             print("=" * 60)
 
-            while True:
-                await asyncio.sleep(10)
+            await context.close()
+            logger.info("Browser closed.")
+            print("Bot finished. Exiting.")
 
 
 async def main():
