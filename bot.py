@@ -221,7 +221,7 @@ Write ONLY the comment text, nothing else:"""
             await asyncio.sleep(4)
 
             if screenshot_prefix:
-                await page.screenshot(path=str(SCREENSHOTS_DIR / f"run_{RUN_ID}"))
+                await page.screenshot(path=str(SCREENSHOTS_DIR / f"run_{RUN_ID}.png"))
 
             # Scroll to bottom where the comment composer is
             logger.info("Scrolling to comments...")
