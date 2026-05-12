@@ -37,8 +37,8 @@ SUBREDDITS = [
     "programming", "nocode", "microsaas", "EntrepreneurRideAlong"
 ]
 POSTS_PER_SUBREDDIT = 2
-MIN_DELAY = 360   # 6 minutes
-MAX_DELAY = 3600  # 60 minutes
+MIN_DELAY = 600   # 10 minutes
+MAX_DELAY = 1200  # 20 minutes
 
 LOG_FILE = BASE_DIR / "bot.log"
 SCREENSHOTS_DIR = BASE_DIR / "screenshots"
@@ -464,7 +464,7 @@ Write ONLY the comment text, nothing else:"""
 
                 if i < len(SUBREDDITS):
                     logger.info("Moving to next subreddit...")
-                    self._random_delay(min_sec=15, max_sec=25)
+                    self._random_delay(min_sec=60, max_sec=90)
 
             print("\n" + "=" * 60)
             logger.info("Automation complete!")
