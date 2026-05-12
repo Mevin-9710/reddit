@@ -315,12 +315,32 @@ Write ONLY the comment text, nothing else:"""
             logger.info(f"Comment button clicked: {clicked}")
 
             if clicked:
-                await asyncio.sleep(5)
-                await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_after.png"))
-                logger.info("Comment posted!")
-                return True
+                await asyncio.sleep(8)  # Wait longer for comment to process
 
-            logger.error("Could not post comment")
+                # Verify comment was actually posted by checking for errors or new comment
+                verification = await page.evaluate('''() => {
+                    // Check for error messages
+                    const errors = document.querySelectorAll('[role="alert"], .error, .-shout-error');
+                    for (const e of errors) {
+                        if (e.innerText.trim().length > 0) {
+                            return { success: false, error: e.innerText };
+                        }
+                    }
+                    // Check if there's a new comment in the comment list
+                    const comments = document.querySelectorAll('shreddit-comment, [data-testid="comment"]');
+                    return { success: true, commentCount: comments.length };
+                }''')
+
+                await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_after.png"))
+
+                if verification.get("success"):
+                    logger.info(f"Comment posted! ({verification.get('commentCount')} comments)")
+                    return True
+                else:
+                    logger.error(f"Comment failed: {verification.get('error')}")
+                    return False
+
+            logger.error("Could not post comment - button not found")
             await page.screenshot(path=str(SCREENSHOTS_DIR / f"{screenshot_prefix}_error.png"))
             return False
 
