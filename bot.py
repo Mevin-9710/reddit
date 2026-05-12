@@ -42,6 +42,7 @@ MAX_DELAY = 3600  # 60 minutes
 
 LOG_FILE = BASE_DIR / "bot.log"
 SCREENSHOTS_DIR = BASE_DIR / "screenshots"
+POSTED_POSTS_FILE = BASE_DIR / "posted_posts.json"
 
 # Create timestamped run folder for screenshots
 RUN_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -113,12 +114,38 @@ class RedditBot:
         self.failed = 0
         self.total_posts = len(SUBREDDITS) * POSTS_PER_SUBREDDIT
         self.current_action = "Idle"
+        self.posted_posts = self._load_posted_posts()
 
         self.http = requests.Session()
         self.http.headers.update({
             "User-Agent": get_random_user_agent(),
             "Referer": "https://www.reddit.com"
         })
+
+    def _load_posted_posts(self) -> set:
+        """Load already-posted post IDs from file."""
+        if POSTED_POSTS_FILE.exists():
+            try:
+                with open(POSTED_POSTS_FILE, "r") as f:
+                    return set(json.load(f))
+            except Exception as e:
+                logger.warning(f"Could not load posted posts: {e}")
+        return set()
+
+    def _save_posted_posts(self) -> None:
+        """Save posted post IDs to file."""
+        try:
+            with open(POSTED_POSTS_FILE, "w") as f:
+                json.dump(list(self.posted_posts), f)
+        except Exception as e:
+            logger.error(f"Could not save posted posts: {e}")
+
+    def _is_posted(self, post_id: str) -> bool:
+        return post_id in self.posted_posts
+
+    def _mark_posted(self, post_id: str) -> None:
+        self.posted_posts.add(post_id)
+        self._save_posted_posts()
 
     def _random_delay(self, min_sec: int = MIN_DELAY, max_sec: int = MAX_DELAY):
         delay = random.uniform(min_sec, max_sec)
@@ -152,14 +179,17 @@ class RedditBot:
             results = []
             for post in posts[:POSTS_PER_SUBREDDIT * 2]:
                 p = post.get("data", {})
-                if p.get("title") and p.get("permalink"):
+                post_id = p.get("id")
+                if p.get("title") and p.get("permalink") and not self._is_posted(post_id):
                     results.append({
                         "title": p.get("title"),
                         "permalink": f"https://www.reddit.com{p.get('permalink')}",
-                        "id": p.get("id")
+                        "id": post_id
                     })
                     if len(results) >= POSTS_PER_SUBREDDIT:
                         break
+            if len(results) < POSTS_PER_SUBREDDIT:
+                logger.info(f"Found {len(results)} new posts (skipping {POSTS_PER_SUBREDDIT - len(results)} already posted)")
             return results
 
         except Exception as e:
@@ -379,6 +409,7 @@ Write ONLY the comment text, nothing else:"""
 
                     if success:
                         self.comments_posted += 1
+                        self._mark_posted(post["id"])
                         logger.success(f"Comment posted! ({self.comments_posted}/{self.total_posts})")
                     else:
                         self.failed += 1
