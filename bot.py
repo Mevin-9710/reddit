@@ -127,7 +127,9 @@ class RedditBot:
         if POSTED_POSTS_FILE.exists():
             try:
                 with open(POSTED_POSTS_FILE, "r") as f:
-                    return set(json.load(f))
+                    posts = set(json.load(f))
+                    logger.info(f"Loaded {len(posts)} posted posts: {posts}")
+                    return posts
             except Exception as e:
                 logger.warning(f"Could not load posted posts: {e}")
         return set()
@@ -141,7 +143,9 @@ class RedditBot:
             logger.error(f"Could not save posted posts: {e}")
 
     def _is_posted(self, post_id: str) -> bool:
-        return post_id in self.posted_posts
+        result = post_id in self.posted_posts
+        logger.info(f"Checking if {post_id} is posted: {result}")
+        return result
 
     def _mark_posted(self, post_id: str) -> None:
         self.posted_posts.add(post_id)
