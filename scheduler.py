@@ -6,8 +6,7 @@ import time
 import subprocess
 import sys
 from datetime import datetime
-
-RUN_TIME = "09:00"  # Daily at 9:00 AM
+from config import SCHEDULE_TIME
 
 def run_bot():
     """Run the Reddit bot."""
@@ -19,8 +18,8 @@ def run_bot():
         print(f"[{datetime.now()}] Bot run failed: {e}")
 
 def main():
-    print(f"Scheduler started. Bot will run daily at {RUN_TIME}")
-    schedule.every().day.at(RUN_TIME).do(run_bot)
+    print(f"Scheduler started. Bot will run daily at {SCHEDULE_TIME}")
+    schedule.every().day.at(SCHEDULE_TIME).do(run_bot)
 
     # Run immediately on start (optional - comment out if not wanted)
     # run_bot()

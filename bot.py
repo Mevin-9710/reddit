@@ -15,6 +15,12 @@ from typing import Optional
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
+# Load config
+from config import (
+    SUBREDDITS, POSTS_PER_SUBREDDIT,
+    MIN_DELAY, MAX_DELAY, MIN_SUBREDDIT_DELAY, MAX_SUBREDDIT_DELAY
+)
+
 load_dotenv()
 
 # User agents for rotating
@@ -30,15 +36,6 @@ def get_random_user_agent():
 BASE_DIR = Path(__file__).parent
 
 BROWSER_PROFILE = BASE_DIR / "browser_profile"
-
-SUBREDDITS = [
-    "startups", "entrepreneur", "SaaS",
-    "GrowthHacking", "indiehackers", "webdev",
-    "programming", "nocode", "microsaas", "EntrepreneurRideAlong"
-]
-POSTS_PER_SUBREDDIT = 2
-MIN_DELAY = 600   # 10 minutes
-MAX_DELAY = 1200  # 20 minutes
 
 LOG_FILE = BASE_DIR / "bot.log"
 SCREENSHOTS_DIR = BASE_DIR / "screenshots"
@@ -464,7 +461,7 @@ Write ONLY the comment text, nothing else:"""
 
                 if i < len(SUBREDDITS):
                     logger.info("Moving to next subreddit...")
-                    self._random_delay(min_sec=60, max_sec=90)
+                    self._random_delay(min_sec=MIN_SUBREDDIT_DELAY, max_sec=MAX_SUBREDDIT_DELAY)
 
             print("\n" + "=" * 60)
             logger.info("Automation complete!")
